@@ -1,5 +1,6 @@
-from flask import Flask,request,jsonify
+from flask import Flask,request,jsonify,render_template,send_file
 from datetime import datetime,timezone
+from pathlib import Path
 import json
 from config import UPLOAD_DIR,DEVICE_API_TOKEN
 from database import init_db,connection
@@ -26,6 +27,29 @@ def context_from(src):
     if "light_lux" in readings and readings["light_lux"]<0: raise ValueError("light_lux cannot be negative")
     if "temperature_c" in readings and not -20<=readings["temperature_c"]<=80: raise ValueError("temperature_c outside accepted range")
     return device,species,readings
+
+@app.get("/dashboard")
+def dashboard():
+    return render_template("dashboard.html")
+
+@app.get("/api/plant/latest-image")
+def latest_image():
+    device=request.args.get("device_id","plantsense-01")
+    with connection() as con:
+        row=con.execute(
+            """SELECT p.image_path FROM plant_images p
+               WHERE p.device_id=? ORDER BY p.id DESC LIMIT 1""",
+            (device,)
+        ).fetchone()
+    if not row:
+        return jsonify({"message":"no image found"}),404
+    path=Path(row["image_path"]).resolve()
+    # Only serve images stored under the configured upload directory.
+    root=UPLOAD_DIR.resolve()
+    if root not in path.parents or not path.is_file():
+        return jsonify({"error":"image_not_found"}),404
+    return send_file(path, mimetype="image/jpeg", conditional=True)
+
 @app.get("/api/health")
 def health(): return jsonify({"service":"PlantSense API","status":"ok","timestamp":datetime.now(timezone.utc).isoformat()})
 @app.post("/api/plant/analyze")
@@ -38,7 +62,7 @@ def analyze():
         image_path,raw=validate_and_store_image(request.files["image"],device)
         ctx={"device_id":device,"plant_species":species,"growth_stage":request.form.get("growth_stage","unknown")[:80],"sensor_readings":readings,"actuator_state":{"pump":pump,"grow_light":light}}
         outputs,status=process_analysis(raw,ctx)
-        result={"plant_species":species,"analysis":outputs,"ai_status":status,"sensor_data":readings,"recommendation_is_advisory":True}
+        result={"plant_species":species,"analysis":outputs,"ai_status":status,"sensor_data":readings,"actuator_state":{"pump":pump,"grow_light":light},"recommendation_is_advisory":True}
         result.update(save_snapshot(device,species,readings,pump,light,image_path,result,status))
         return jsonify(result)
     except ValueError as e: return jsonify({"error":str(e)}),400

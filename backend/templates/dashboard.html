@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10251c">
+  <title>PlantSense · Dashboard</title>
+  <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/dashboard"><span class="brand-mark">✳</span><span>Plant<span class="brand-light">Sense</span><small>AI GROWING SYSTEM</small></span></a>
+      <div class="side-label">WORKSPACE</div>
+      <a class="nav-item active" href="/dashboard"><span>▦</span> Overview</a>
+      <div class="side-note">
+        <div class="side-note-icon">⌁</div>
+        <strong>Local automation</strong>
+        <p>Your ESP32 continues to manage watering and lighting even if the dashboard or AI service is offline.</p>
+      </div>
+      <div class="sidebar-bottom"><span class="pulse-dot"></span> Device connection is checked automatically</div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><div class="eyebrow">PLANT MONITORING</div><h1>Overview</h1></div>
+        <div class="top-actions">
+          <label class="device-select">DEVICE <input id="deviceId" value="plantsense-01" aria-label="Device ID"></label>
+          <div class="connection" id="connection"><span class="status-dot"></span><span id="connectionText">Checking device…</span></div>
+        </div>
+      </header>
+
+      <section class="welcome-row">
+        <div><h2>Your plant, at a glance.</h2><p>Sensor conditions, recent activity and AI-assisted observations.</p></div>
+        <div class="updated">LAST UPDATED <strong id="lastUpdated">—</strong></div>
+      </section>
+
+      <section class="section-heading"><div><h3>Environment</h3><p>Only sensors with available readings are shown.</p></div><span class="live-tag"><span class="pulse-dot"></span> LIVE DATA</span></section>
+      <section class="metric-grid" id="metrics">
+        <div class="empty-state">Waiting for sensor readings…</div>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel chart-panel">
+          <div class="panel-head"><div><h3>Sensor history</h3><p>Recent recorded readings</p></div>
+            <select id="historyMetric" aria-label="Chart metric">
+              <option value="temperature_c">Temperature</option>
+              <option value="humidity_pct">Humidity</option>
+              <option value="soil_moisture_pct">Soil moisture</option>
+              <option value="light_lux">Light</option>
+            </select>
+          </div>
+          <div class="chart-wrap"><canvas id="historyChart" aria-label="Sensor history chart"></canvas><div class="chart-empty" id="chartEmpty">No history available yet.</div></div>
+          <div class="chart-foot"><span id="chartUnit">°C</span><span>Most recent 50 records</span></div>
+        </article>
+
+        <article class="panel actuator-panel">
+          <div class="panel-head"><div><h3>Automation status</h3><p>Reported by the ESP32</p></div><span class="read-only">READ ONLY</span></div>
+          <div class="actuator-row"><div class="actuator-icon">◉</div><div class="actuator-copy"><strong>Water pump</strong><span>Local threshold automation</span></div><span class="state-pill unknown" id="pumpState">Unknown</span></div>
+          <div class="actuator-row"><div class="actuator-icon sun">☼</div><div class="actuator-copy"><strong>Grow light</strong><span>Local threshold automation</span></div><span class="state-pill unknown" id="lightState">Unknown</span></div>
+          <div class="automation-foot">Controls are intentionally not exposed here. The ESP32 remains in charge of actuator safety and thresholds.</div>
+        </article>
+      </section>
+
+      <section class="section-heading ai-heading"><div><h3>Plant health analysis</h3><p>Latest image and AI-assisted observations</p></div><span class="ai-tag">✦ AI INSIGHTS</span></section>
+      <section class="content-grid ai-grid">
+        <article class="panel image-panel">
+          <div class="panel-head"><div><h3>Latest plant image</h3><p id="imageTimestamp">No image received yet</p></div></div>
+          <div class="plant-image-wrap" id="plantImageWrap"><div class="image-placeholder"><span>✿</span><strong>Waiting for a plant image</strong><small>Images uploaded by your ESP32-CAM will appear here.</small></div></div>
+        </article>
+        <article class="panel diagnosis-panel">
+          <div class="panel-head"><div><h3>AI observations</h3><p id="analysisTimestamp">No analysis available yet</p></div><span class="ai-status" id="aiStatus">NOT RUN</span></div>
+          <div id="diagnosisContent" class="diagnosis-content"><div class="empty-diagnosis">Plant analysis will appear here after the first image is processed.</div></div>
+        </article>
+      </section>
+      <footer>PlantSense AI <span>•</span> Recommendations are advisory. Verify plant symptoms before treatment.</footer>
+    </main>
+  </div>
+  <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
