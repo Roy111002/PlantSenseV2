@@ -32,20 +32,14 @@ function setConnection(ok, message){
   $("connection").classList.toggle("offline", !ok);
   $("connectionText").textContent = message;
 }
-function renderMetrics(latest, history){
+function renderMetrics(telemetry){
   const container = $("metrics");
-  const data = latest?.result?.sensor_data || {};
-  const timestamp = latest?.created_at || history?.[0]?.created_at;
+  const data = telemetry?.sensor_data || {};
+  const timestamp = telemetry?.created_at;
   const age = timestamp ? Date.now() - new Date(timestamp).getTime() : Infinity;
   const stale = age > 2 * 60 * 1000;
   const cards = metrics.filter(m => data[m.key] !== undefined && data[m.key] !== null);
   if(!cards.length){
-    const available = history?.[0] || {};
-    const fallback = metrics.filter(m => available[m.key] !== undefined && available[m.key] !== null);
-    if(fallback.length){
-      container.innerHTML = fallback.map(m => metricCard(m, available[m.key], available.created_at, true)).join("");
-      return;
-    }
     container.innerHTML = '<div class="empty-state">No sensor readings are available yet. Connect a sensor and wait for the next device update.</div>';
     return;
   }
@@ -134,9 +128,13 @@ function drawChart(){
 async function refresh(){
   const device=deviceId();
   try{
-    const [health, history] = await Promise.all([
+    const [health, history, telemetry] = await Promise.all([
       getJSON("/api/health"),
-      getJSON(`/api/plant/history?device_id=${encodeURIComponent(device)}&limit=50`)
+      getJSON(`/api/plant/history?device_id=${encodeURIComponent(device)}&limit=50`),
+      getJSON(`/api/plant/latest-data?device_id=${encodeURIComponent(device)}`).catch(e => {
+        if(e.message.startsWith("404")) return null;
+        throw e;
+      })
     ]);
     state.history = history.items || [];
     let latest = null;
@@ -144,12 +142,17 @@ async function refresh(){
     catch(e){ if(e.message.startsWith("404")) latest=null; else throw e; }
     state.latest = latest;
     setConnection(true, "API connected");
-    const stamp = latest?.created_at || state.history[0]?.created_at;
+    const stamp = telemetry?.created_at;
     $("lastUpdated").textContent = ageLabel(stamp);
-    renderMetrics(latest,state.history);
-    const act = latest?.result?.actuator_state || state.history[0] || {};
+    renderMetrics(telemetry);
+    const act = telemetry?.actuator_state || {};
     statePill("pumpState",act.pump);
     statePill("lightState",act.grow_light);
+    const stale = !stamp || Date.now()-new Date(stamp).getTime()>2*60*1000;
+    for(const id of ["pumpState","lightState"]){
+      $(id).textContent += stale ? " (stale)" : "";
+      $(id).title = stale ? "No recent device report; this is not a live output state." : "Reported GPIO output level";
+    }
     renderDiagnosis(latest);
     renderImage(device);
     drawChart();

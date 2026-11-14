@@ -9,7 +9,7 @@ This starter contains AI-Thinker ESP32-CAM firmware, a Flask backend, Hugging Fa
 4. An optional local classifier hook is provided for the later trained model.
 
 ## Hardware safety
-- Sensor/actuator GPIOs are deliberately `-1` placeholders. Firmware compiles, but those features remain disabled until you assign real pins.
+- Sensor GPIOs follow the supplied wiring: DHT22 on GPIO2, shared I2C SDA/SCL on GPIO13/14. Pump/light GPIOs remain `-1` and disabled. Verify power rails and remaining wiring details in README-TELEMETRY.md before hardware testing.
 - Camera pins are the AI-Thinker pin map and must not be reused.
 - ESP32-CAM has constrained GPIO availability and boot-strapping pin caveats. Finalize pin mapping only after seeing your exact board and circuit.
 - Never power a pump or bulb from a GPIO. Use a correctly rated logic-level MOSFET driver and separate regulated load supply. DC pump needs suitable flyback protection.
@@ -34,11 +34,16 @@ python app.py
 Test `http://127.0.0.1:5000/api/health`. For ESP32, use your PC LAN IP in `API_ANALYZE_URL`, not localhost. Keep both devices on the same LAN and allow TCP 5000 through your firewall.
 
 ## API
+- `GET /api/plant/latest-data?device_id=plantsense-01` for current telemetry and actuator states
 - `GET /api/health`
 - `POST /api/plant/analyze` multipart: image, device_id, plant_species, growth_stage, temperature_c, humidity_pct, soil_moisture_pct, light_lux, pump_state, grow_light_state
 - `POST /api/plant/data` JSON telemetry
 - `GET /api/plant/latest?device_id=plantsense-01`
 - `GET /api/plant/history?device_id=plantsense-01&limit=100`
+
+Sensor telemetry and GPIO state reporting are implemented separately from image
+analysis. See [telemetry setup and simulation](README-TELEMETRY.md) for the current
+configuration, dashboard behavior, PowerShell test, and hardware placeholders.
 
 For cloud deployment use HTTPS, a production WSGI server, authentication, firewall rules, and persistent storage. Do not expose Flask development server publicly.
 

@@ -1,2 +1,6 @@
 # Web dashboard — next milestone
-Backend APIs already expose latest analysis and sensor history. Next build a Flask/Jinja web page with sensor cards, live/historical charts, latest image, AI assessment, and actuator states. This first milestone focuses on validating hardware-to-backend connectivity before adding UI.
+The Flask/Jinja dashboard is implemented at `/dashboard`, with sensor cards,
+history charts, latest image, AI assessment, and actuator states. Current readings
+and output states come from `/api/plant/latest-data`, independently of the latest
+AI result. It polls every ten seconds and marks reports older than two minutes
+as stale. See [telemetry setup](../README-TELEMETRY.md) for simulation and wiring.

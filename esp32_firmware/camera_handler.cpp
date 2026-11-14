@@ -1,7 +1,8 @@
+#include <Arduino.h>
 #include "camera_handler.h"
 #include "camera_pins.h"
 bool beginCamera(){
-  camera_config_t c;
+  camera_config_t c = {};
   c.ledc_channel=LEDC_CHANNEL_0;c.ledc_timer=LEDC_TIMER_0;
   c.pin_d0=CAM_PIN_Y2;c.pin_d1=CAM_PIN_Y3;c.pin_d2=CAM_PIN_Y4;c.pin_d3=CAM_PIN_Y5;
   c.pin_d4=CAM_PIN_Y6;c.pin_d5=CAM_PIN_Y7;c.pin_d6=CAM_PIN_Y8;c.pin_d7=CAM_PIN_Y9;

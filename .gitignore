@@ -1,2 +1,5 @@
 .env
 .env.example
+.build/
+__pycache__/
+/esp32_firmware/wifi_secrets.h

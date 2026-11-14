@@ -4,7 +4,7 @@ Check `/api/health`. To test image upload:
 ```bash
 curl -X POST http://127.0.0.1:5000/api/plant/analyze -F "image=@sample.jpg" -F "device_id=plantsense-01" -F "plant_species=tomato" -F "temperature_c=28" -F "humidity_pct=65" -F "soil_moisture_pct=42" -F "light_lux=4500"
 ```
-The ESP32 starter currently does not add the optional X-Device-Token header. Leave DEVICE_API_TOKEN empty for LAN bench testing; add header support before enabling it.
+The firmware sends the optional X-Device-Token header on both image and telemetry uploads. Match firmware DEVICE_API_TOKEN to the backend value when enabling authentication.
 
 
 ## Missing sensor readings

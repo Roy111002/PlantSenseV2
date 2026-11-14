@@ -39,8 +39,8 @@ def validate_and_store_image(upload, device_id):
     return path, raw
 
 
-def save_snapshot(device, species, readings, pump, light, image_path=None, result=None, status="not_run"):
-    now = utc_now()
+def save_snapshot(device, species, readings, pump, light, image_path=None, result=None, status="not_run", captured_at=None):
+    now = captured_at or utc_now()
     with connection() as con:
         con.execute(
             """INSERT INTO sensor_readings
