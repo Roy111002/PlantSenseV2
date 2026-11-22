@@ -20,12 +20,17 @@ let telemetry = {
   sensor_data: {temperature_c: 31, light_lux: 0},
   actuator_state: {pump: "OFF", grow_light: "ON"},
 };
+let imageInfo={image_id:7,received_at:new Date().toISOString()};
+const imageLoads=[];
+const imageInstances=[];
 const context = vm.createContext({
+  AbortController, setTimeout, clearTimeout,
   document: {getElementById: element},
   window: {addEventListener() {}, devicePixelRatio: 1},
-  Image: class {}, setInterval() {},
+  Image: class {constructor(){imageInstances.push(this);} set src(value){this.url=value;imageLoads.push(value);}}, setInterval() {},
   fetch: async (url) => ({ok: true, json: async () => {
     if (url.includes("latest-data")) return telemetry;
+    if (url.includes("latest-image-info")) return imageInfo;
     if (url.includes("history")) return {items: []};
     if (url.includes("/latest?")) return {
       created_at: "2020-01-01T00:00:00+00:00", ai_status: "completed",
@@ -45,6 +50,22 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "../static/js/dashboard.js"
   assert.equal(element("pumpState").textContent, "OFF");
   assert.equal(element("lightState").textContent, "ON");
   assert.match(element("diagnosisContent").innerHTML, /older diagnosis/);
+  assert.match(element("imageTimestamp").textContent,/Image #7/);
+  assert.equal(imageLoads.length,1);
+  await vm.runInContext("refresh()",context);
+  assert.equal(imageLoads.length,1,"Unchanged image should not reload every poll");
+  imageInfo={image_id:8,received_at:new Date().toISOString()};
+  await vm.runInContext("refresh()",context);
+  assert.equal(imageLoads.length,2);
+  let appended=0;
+  element("plantImageWrap").appendChild=()=>{appended++;};
+  imageInstances[0].onload();
+  assert.equal(appended,0,"Late response for older image must not replace newer frame");
+  imageInstances[1].onload();
+  assert.equal(appended,1);
+  imageInfo.received_at="2020-01-01T00:00:00+00:00";
+  await vm.runInContext("refresh()",context);
+  assert.match(element("imageTimestamp").textContent,/STALE/);
   telemetry = {...telemetry, sensor_data: {}};
   await vm.runInContext("refresh()", context);
   assert.match(element("metrics").innerHTML, /No sensor readings/);

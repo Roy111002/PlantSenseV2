@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-const state = { history: [], latest: null, refreshMs: 10000, timer: null };
+const state = { history: [], latest: null, refreshMs: 2000, timer: null, refreshing: false, imageKey: null };
 const metrics = [
   {key:"temperature_c", label:"Temperature", icon:"♨", unit:"°C", digits:1},
   {key:"humidity_pct", label:"Humidity", icon:"◌", unit:"%", digits:1},
@@ -10,7 +10,7 @@ function deviceId(){ return ($("deviceId").value.trim() || "plantsense-01"); }
 function fmtTime(value){
   if(!value) return "—";
   const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
 }
 function ageLabel(value){
   if(!value) return "No timestamp";
@@ -24,9 +24,13 @@ function ageLabel(value){
   return `${Math.floor(hrs/24)} day(s) ago`;
 }
 async function getJSON(url){
-  const res = await fetch(url, {cache:"no-store"});
-  if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(()=>controller.abort(),5000);
+  try{
+    const res = await fetch(url, {cache:"no-store", signal:controller.signal});
+    if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return await res.json();
+  }finally{clearTimeout(timeout);}
 }
 function setConnection(ok, message){
   $("connection").classList.toggle("offline", !ok);
@@ -66,7 +70,7 @@ function toArray(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
 function renderDiagnosis(latest){
   const result = latest?.result;
   if(!result){ $("diagnosisContent").innerHTML = '<div class="empty-diagnosis">Plant analysis will appear here after the first image is processed.</div>'; $("aiStatus").textContent="NOT RUN"; $("aiStatus").className="ai-status"; return; }
-  $("analysisTimestamp").textContent = `Analysis received ${fmtTime(latest.created_at)}`;
+  $("analysisTimestamp").textContent = `Analysis for image ${latest.image_id ?? ""} received ${fmtTime(latest.created_at)}`;
   const status = String(latest.ai_status || "unknown").toLowerCase();
   $("aiStatus").textContent = status.replaceAll("_"," ").toUpperCase();
   $("aiStatus").className = `ai-status ${status === "completed" ? "done" : ""}`;
@@ -88,12 +92,23 @@ function renderDiagnosis(latest){
 function escapeHTML(s){
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
-function renderImage(device){
+function renderImage(device, info){
   const wrap = $("plantImageWrap");
-  const url = `/api/plant/latest-image?device_id=${encodeURIComponent(device)}&t=${Date.now()}`;
+  if(!info){
+    state.imageKey=null;
+    $("imageTimestamp").textContent="No image received yet";
+    wrap.innerHTML='<div class="image-placeholder">No plant image available</div>';
+    return;
+  }
+  const stale=Date.now()-new Date(info.received_at).getTime()>15000;
+  $("imageTimestamp").textContent=`${stale?"STALE · ":""}Image #${info.image_id} received ${fmtTime(info.received_at)} · ${ageLabel(info.received_at)}`;
+  const key=`${device}:${info.image_id}`;
+  if(state.imageKey===key)return;
+  state.imageKey=key;
+  const url = `/api/plant/latest-image?device_id=${encodeURIComponent(device)}&image_id=${info.image_id}`;
   const img = new Image();
-  img.onload = () => { wrap.innerHTML=""; img.alt="Latest plant image"; wrap.appendChild(img); };
-  img.onerror = () => { wrap.innerHTML='<div class="image-placeholder"><span>✿</span><strong>No plant image available</strong><small>The latest ESP32-CAM image will appear here.</small></div>'; };
+  img.onload = () => { if(state.imageKey!==key || deviceId()!==device)return;wrap.innerHTML=""; img.alt="Latest plant image"; wrap.appendChild(img); };
+  img.onerror = () => { if(state.imageKey!==key)return;state.imageKey=null;wrap.innerHTML='<div class="image-placeholder">Could not load latest image; retrying.</div>'; };
   img.src = url;
 }
 function drawChart(){
@@ -126,13 +141,19 @@ function drawChart(){
   const label=fmtTime(last.created_at);ctx.fillText(label,Math.max(p.l,w-p.r-ctx.measureText(label).width),h-5);
 }
 async function refresh(){
+  if(state.refreshing)return;
+  state.refreshing=true;
   const device=deviceId();
   try{
-    const [health, history, telemetry] = await Promise.all([
+    const [health, history, telemetry, imageInfo] = await Promise.all([
       getJSON("/api/health"),
       getJSON(`/api/plant/history?device_id=${encodeURIComponent(device)}&limit=50`),
       getJSON(`/api/plant/latest-data?device_id=${encodeURIComponent(device)}`).catch(e => {
         if(e.message.startsWith("404")) return null;
+        throw e;
+      }),
+      getJSON(`/api/plant/latest-image-info?device_id=${encodeURIComponent(device)}`).catch(e=>{
+        if(e.message.startsWith("404"))return null;
         throw e;
       })
     ]);
@@ -141,6 +162,7 @@ async function refresh(){
     try { latest = await getJSON(`/api/plant/latest?device_id=${encodeURIComponent(device)}`); }
     catch(e){ if(e.message.startsWith("404")) latest=null; else throw e; }
     state.latest = latest;
+    if(device!==deviceId())return;
     setConnection(true, "API connected");
     const stamp = telemetry?.created_at;
     $("lastUpdated").textContent = ageLabel(stamp);
@@ -154,13 +176,13 @@ async function refresh(){
       $(id).title = stale ? "No recent device report; this is not a live output state." : "Reported GPIO output level";
     }
     renderDiagnosis(latest);
-    renderImage(device);
+    renderImage(device,imageInfo);
     drawChart();
   }catch(e){
     setConnection(false,"API unavailable");
     $("lastUpdated").textContent="—";
     if(!state.history.length) $("metrics").innerHTML='<div class="empty-state">Cannot load dashboard data. Check that the Flask backend is running.</div>';
-  }
+  }finally{state.refreshing=false;}
 }
 $("historyMetric").addEventListener("change",drawChart);
 $("deviceId").addEventListener("change",refresh);

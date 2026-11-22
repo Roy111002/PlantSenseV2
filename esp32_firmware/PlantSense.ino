@@ -37,13 +37,27 @@ static void telemetryTask(void*){
 }
 
 static void imageTask(void*){
+  uint32_t lastAttempt=0,lastAnalysis=0;
+  uint32_t interval=IMAGE_INTERVAL_MS;
+  bool uploaded=false,analysisRequested=false,wasConnected=false;
   for(;;){
-    vTaskDelay(pdMS_TO_TICKS(IMAGE_INTERVAL_MS));
+    const bool connected=wifiConnected();
+    const uint32_t now=millis();
+    const bool due=!uploaded || !wasConnected || now-lastAttempt>=interval;
     TelemetrySnapshot snapshot;
-    if(cameraReady && wifiConnected() && xQueuePeek(snapshotQueue,&snapshot,0)==pdTRUE){
+    if(cameraReady && connected && due && xQueuePeek(snapshotQueue,&snapshot,0)==pdTRUE){
+      lastAttempt=now;
       camera_fb_t* fb=capturePlantImage();
-      if(fb){uploadPlantSnapshot(fb,snapshot);releasePlantImage(fb);}
+      const bool runAi=!analysisRequested || now-lastAnalysis>=AI_INTERVAL_MS;
+      bool ok=false;
+      if(fb){ok=uploadPlantSnapshot(fb,snapshot,runAi);releasePlantImage(fb);}
+      uploaded=true;
+      interval=ok?IMAGE_INTERVAL_MS:IMAGE_RETRY_INTERVAL_MS;
+      if(ok && runAi){analysisRequested=true;lastAnalysis=now;}
+      // A failed attempt is discarded; the next attempt captures a new scene.
     }
+    wasConnected=connected;
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
 void setup(){

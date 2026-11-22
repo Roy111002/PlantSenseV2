@@ -62,6 +62,10 @@ def save_snapshot(device, species, readings, pump, light, image_path=None, resul
             image_id = cur.lastrowid
         analysis_id = None
         if result is not None:
+            if status == "queued":
+                # Keep at most the newest waiting analysis per device. Never
+                # accumulate a backlog of old scenes while the provider is slow.
+                con.execute("UPDATE ai_analysis SET ai_status='superseded' WHERE device_id=? AND ai_status='queued'", (device,))
             cur = con.execute(
                 """INSERT INTO ai_analysis
                 (image_id,device_id,result_json,ai_status,created_at) VALUES(?,?,?,?,?)""",

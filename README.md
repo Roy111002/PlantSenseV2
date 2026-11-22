@@ -34,6 +34,10 @@ python app.py
 Test `http://127.0.0.1:5000/api/health`. For ESP32, use your PC LAN IP in `API_ANALYZE_URL`, not localhost. Keep both devices on the same LAN and allow TCP 5000 through your firewall.
 
 ## API
+- See [fresh camera update](FAST-CAMERA-UPDATE.md) for immediate image storage,
+  background AI, installation on the cloned laptop, and freshness checks.
+- `POST /api/plant/snapshot` stores an image immediately and optionally queues AI
+- `GET /api/plant/latest-image-info?device_id=plantsense-01` returns image ID and receipt time
 - `GET /api/plant/latest-data?device_id=plantsense-01` for current telemetry and actuator states
 - `GET /api/health`
 - `POST /api/plant/analyze` multipart: image, device_id, plant_species, growth_stage, temperature_c, humidity_pct, soil_moisture_pct, light_lux, pump_state, grow_light_state

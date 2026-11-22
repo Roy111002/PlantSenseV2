@@ -35,6 +35,8 @@ class TelemetryTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        from analysis_worker import stop_analysis_worker
+        stop_analysis_worker()
         cls.env.stop()
         cls.temp.cleanup()
 
@@ -85,6 +87,79 @@ class TelemetryTests(unittest.TestCase):
 
     def test_unknown_device_isolated(self):
         self.assertEqual(self.client.get("/api/plant/latest-data?device_id=absent").status_code, 404)
+
+    def upload_snapshot(self, device, run_ai="true", color="green"):
+        from PIL import Image
+        image=io.BytesIO()
+        Image.new("RGB",(16,16),color).save(image,"JPEG")
+        image.seek(0)
+        return self.client.post("/api/plant/snapshot",headers=self.headers,data={
+            "image":(image,"plant.jpg"),"device_id":device,"run_analysis":run_ai,
+        })
+
+    def test_snapshot_published_before_slow_ai_finishes(self):
+        import analysis_worker
+        started=threading.Event()
+        release=threading.Event()
+
+        def slow_ai(raw, context):
+            started.set()
+            if not release.wait(5): raise RuntimeError("test did not release AI worker")
+            return {"vlm":{"plant_condition":"healthy"}},"completed"
+
+        with patch.object(analysis_worker,"process_analysis",side_effect=slow_ai):
+            try:
+                response=self.upload_snapshot("live-preview")
+                self.assertEqual(response.status_code,202)
+                self.assertTrue(started.wait(2))
+                first=response.get_json()
+                pending=self.client.get("/api/plant/latest?device_id=live-preview").get_json()
+                self.assertEqual(pending["ai_status"],"processing")
+                # AI is deliberately blocked. Preview and newer uploads must work.
+                newer=self.upload_snapshot("live-preview","false","red")
+                self.assertEqual(newer.status_code,201)
+                info=self.client.get("/api/plant/latest-image-info?device_id=live-preview").get_json()
+                self.assertEqual(info["image_id"],newer.get_json()["image_id"])
+                with self.client.get(f'/api/plant/latest-image?device_id=live-preview&image_id={first["image_id"]}') as original:
+                    self.assertEqual(original.status_code,200)
+                self.assertEqual(self.client.get("/api/health").status_code,200)
+            finally:
+                release.set()
+                analysis_worker.stop_analysis_worker()
+        done=self.client.get("/api/plant/latest?device_id=live-preview").get_json()
+        self.assertEqual(done["ai_status"],"completed")
+        self.assertEqual(done["image_id"],first["image_id"])
+        self.assertEqual(self.client.get("/api/plant/latest-image-info?device_id=live-preview").get_json()["image_id"],info["image_id"])
+
+    def test_snapshot_queues_only_newest_waiting_analysis(self):
+        with patch.object(self.api,"start_analysis_worker"):
+            first=self.upload_snapshot("bounded-queue").get_json()
+            second=self.upload_snapshot("bounded-queue").get_json()
+        with closing(sqlite3.connect(self.db_path)) as con:
+            statuses=con.execute("SELECT id,ai_status FROM ai_analysis WHERE device_id='bounded-queue' ORDER BY id").fetchall()
+        self.assertEqual(statuses,[(first["analysis_id"],"superseded"),(second["analysis_id"],"queued")])
+        import analysis_worker
+        with patch.object(analysis_worker,"process_analysis",return_value=({"vlm":{}},"completed")):
+            self.assertTrue(analysis_worker.process_next_analysis())
+
+    def test_snapshot_failure_keeps_image_available(self):
+        with patch.object(self.api,"start_analysis_worker"):
+            response=self.upload_snapshot("ai-failure")
+        import analysis_worker
+        with patch.object(analysis_worker,"process_analysis",side_effect=RuntimeError("provider unavailable")):
+            with self.assertLogs("analysis_worker",level="ERROR"):
+                self.assertTrue(analysis_worker.process_next_analysis())
+        latest=self.client.get("/api/plant/latest?device_id=ai-failure").get_json()
+        self.assertEqual(latest["ai_status"],"failed")
+        with self.client.get("/api/plant/latest-image?device_id=ai-failure") as image:
+            self.assertEqual(image.status_code,200)
+        self.assertEqual(response.status_code,202)
+
+    def test_snapshot_auth_and_validation(self):
+        self.assertEqual(self.client.post("/api/plant/snapshot").status_code,401)
+        self.assertEqual(self.client.post("/api/plant/snapshot",headers=self.headers).status_code,400)
+        self.assertEqual(self.upload_snapshot("invalid-ai","maybe").status_code,400)
+        self.assertEqual(self.client.get("/api/plant/latest-image-info?device_id=no-images").status_code,404)
 
     @unittest.skipUnless(shutil.which("powershell"), "PowerShell is required for the simulation script")
     def test_powershell_simulation_over_http(self):

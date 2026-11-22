@@ -7,6 +7,15 @@
 #include <ArduinoJson.h>
 #include "esp_heap_caps.h"
 
+static void logHttpResult(const char* label,const char* url,int code,uint32_t started){
+  Serial.printf("[%s] HTTP %d, elapsed=%lu ms, RSSI=%d dBm\n",label,code,(unsigned long)(millis()-started),WiFi.RSSI());
+  if(code<=0){
+    Serial.printf("[%s] error=%s, target=%s, local_ip=%s, gateway=%s, wifi_status=%d\n",
+      label,HTTPClient::errorToString(code).c_str(),url,
+      WiFi.localIP().toString().c_str(),WiFi.gatewayIP().toString().c_str(),(int)WiFi.status());
+  }
+}
+
 bool uploadPlantTelemetry(const TelemetrySnapshot& snapshot){
   if(!wifiConnected())return false;
   const SensorData& d=snapshot.sensors;
@@ -17,21 +26,26 @@ bool uploadPlantTelemetry(const TelemetrySnapshot& snapshot){
   if(d.lightValid)doc["light_lux"]=d.lightLux;
   doc["pump_state"]=snapshot.pumpState;doc["grow_light_state"]=snapshot.growLightState;
   String payload;serializeJson(doc,payload);
-  HTTPClient http;http.setConnectTimeout(3000);http.setTimeout(4000);
+  HTTPClient http;http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);http.setTimeout(TELEMETRY_HTTP_TIMEOUT_MS);
   if(!http.begin(API_TELEMETRY_URL))return false;
   http.addHeader("Content-Type","application/json");
   if(DEVICE_API_TOKEN[0])http.addHeader("X-Device-Token",DEVICE_API_TOKEN);
+  uint32_t started=millis();
   int code=http.POST(payload);
-  Serial.printf("[TELEMETRY] HTTP %d\n",code);
+  logHttpResult("TELEMETRY",API_TELEMETRY_URL,code,started);
   http.end();return code>=200&&code<300;
 }
 
-bool uploadPlantSnapshot(camera_fb_t* fb,const TelemetrySnapshot& snapshot){
+bool uploadPlantSnapshot(camera_fb_t* fb,const TelemetrySnapshot& snapshot,bool runAnalysis){
   const SensorData& d=snapshot.sensors;
   if(!fb || !wifiConnected())return false;
+  String url=API_ANALYZE_URL;
+  if(!url.endsWith("/analyze")){Serial.println("[API] API_ANALYZE_URL must end with /analyze");return false;}
+  url=url.substring(0,url.length()-8)+"/snapshot";
   const String boundary="----PlantSenseBoundary7MA4YWxk";String head;
   auto field=[&](const char* n,const String& v){head+="--"+boundary+"\r\nContent-Disposition: form-data; name=\""+String(n)+"\"\r\n\r\n"+v+"\r\n";};
   field("device_id",DEVICE_ID);field("plant_species",PLANT_SPECIES);field("growth_stage",GROWTH_STAGE);
+  field("run_analysis",runAnalysis?"true":"false");
   field("temperature_c",d.dhtValid?String(d.temperatureC,2):"");field("humidity_pct",d.dhtValid?String(d.humidityPct,2):"");
   field("soil_moisture_pct",d.soilValid?String(d.soilMoisturePct,2):"");field("light_lux",d.lightValid?String(d.lightLux,1):"");
   field("pump_state",snapshot.pumpState);field("grow_light_state",snapshot.growLightState);
@@ -39,11 +53,12 @@ bool uploadPlantSnapshot(camera_fb_t* fb,const TelemetrySnapshot& snapshot){
   String tail="\r\n--"+boundary+"--\r\n";size_t total=head.length()+fb->len+tail.length();
   uint8_t* payload=(uint8_t*)heap_caps_malloc(total,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);if(!payload)payload=(uint8_t*)malloc(total);if(!payload){Serial.println("[API] allocation failed");return false;}
   size_t off=0;memcpy(payload+off,head.c_str(),head.length());off+=head.length();memcpy(payload+off,fb->buf,fb->len);off+=fb->len;memcpy(payload+off,tail.c_str(),tail.length());
-  HTTPClient http;http.setTimeout(HTTP_TIMEOUT_MS);if(!http.begin(API_ANALYZE_URL)){free(payload);return false;}
+  HTTPClient http;http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);http.setTimeout(HTTP_TIMEOUT_MS);if(!http.begin(url)){free(payload);return false;}
   http.addHeader("Content-Type","multipart/form-data; boundary="+boundary);
   if(DEVICE_API_TOKEN[0])http.addHeader("X-Device-Token",DEVICE_API_TOKEN);
+  uint32_t started=millis();
   int code=http.POST(payload,total);free(payload);
-  if(code>0){String response=http.getString();Serial.printf("[API] HTTP %d\n%s\n",code,response.c_str());}
-  else Serial.printf("[API] error %s\n",http.errorToString(code).c_str());
+  logHttpResult("API",url.c_str(),code,started);
+  if(code>0){String response=http.getString();Serial.println(response);}
   http.end();return code>=200&&code<300;
 }

@@ -4,8 +4,9 @@ The ESP32 sends JSON telemetry to `/api/plant/data` approximately every five
 seconds while Wi-Fi is connected. It samples sensors every five seconds and
 reports temperature (C), humidity (%), calibrated soil moisture (%), light (lux),
 and pump/grow-light GPIO output states. Failed requests retry on the next interval;
-there is no offline backlog. Image uploads remain separate, approximately every
-five minutes, and retain the Groq analysis integration.
+there is no offline backlog. Fresh images upload approximately every five
+seconds, independently of background Groq analysis, which is requested every
+five minutes. See [camera update and installation](FAST-CAMERA-UPDATE.md).
 
 Telemetry and image HTTP requests run in separate FreeRTOS tasks. The main loop
 keeps updating local automation while either request is waiting. The pump runtime
@@ -85,10 +86,11 @@ retried on device restart.
 - `/api/plant/latest` continues returning the latest AI analysis and its original
   image-associated sensor context.
 
-The dashboard polls every ten seconds and uses `/latest-data` for its current
+The dashboard polls every two seconds and uses `/latest-data` for its current
 sensor cards and actuator states. Image/AI panels remain independent. Values
 older than two minutes are marked stale. A slow image analysis does not replace
-newer telemetry. No database migration is needed.
+newer telemetry. New images are published before AI finishes. SQLite WAL and
+query indexes are initialized automatically without replacing existing data.
 
 ## Simulate telemetry in PowerShell
 

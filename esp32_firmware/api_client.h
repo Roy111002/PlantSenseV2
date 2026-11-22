@@ -8,4 +8,4 @@ struct TelemetrySnapshot {
   const char* growLightState = "UNKNOWN";
 };
 bool uploadPlantTelemetry(const TelemetrySnapshot& snapshot);
-bool uploadPlantSnapshot(camera_fb_t* fb,const TelemetrySnapshot& snapshot);
+bool uploadPlantSnapshot(camera_fb_t* fb,const TelemetrySnapshot& snapshot,bool runAnalysis);

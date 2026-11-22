@@ -9,8 +9,8 @@ static const char* WIFI_SSID = "YOUR_WIFI_SSID";
 static const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 #endif
 // Use PC LAN IP, e.g. http://192.168.1.10:5000/api/plant/analyze
-static const char* API_ANALYZE_URL = "http://192.168.0.103:5000/api/plant/analyze";
-static const char* API_TELEMETRY_URL = "http://192.168.0.103:5000/api/plant/data";
+static const char* API_ANALYZE_URL = "http://192.168.0.101:5000/api/plant/analyze";
+static const char* API_TELEMETRY_URL = "http://192.168.0.101:5000/api/plant/data";
 // Match backend DEVICE_API_TOKEN when authentication is enabled.
 static const char* DEVICE_API_TOKEN = "";
 static const char* DEVICE_ID = "plantsense-01";
@@ -41,7 +41,13 @@ static constexpr uint32_t MAX_PUMP_RUNTIME_MS = 8000;
 static constexpr uint32_t PUMP_COOLDOWN_MS = 60000;
 static constexpr uint32_t SENSOR_INTERVAL_MS = 5000;
 static constexpr uint32_t TELEMETRY_INTERVAL_MS = 5000;
-static constexpr uint32_t IMAGE_INTERVAL_MS = 300000;
+static constexpr uint32_t IMAGE_INTERVAL_MS = 5000;
+static constexpr uint32_t AI_INTERVAL_MS = 300000;
+static constexpr uint32_t IMAGE_RETRY_INTERVAL_MS = 2000;
 static constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 10000;
-static constexpr uint32_t HTTP_TIMEOUT_MS = 25000;
+static constexpr uint32_t HTTP_CONNECT_TIMEOUT_MS = 5000;
+static constexpr uint16_t TELEMETRY_HTTP_TIMEOUT_MS = 10000;
+// HTTPClient's response timeout is uint16_t; keep this below 65536 ms.
+// Snapshot responses acknowledge storage; AI runs separately on Flask.
+static constexpr uint16_t HTTP_TIMEOUT_MS = 10000; // Snapshot receipt only; AI runs on Flask.
 #define DHT_SENSOR_TYPE DHT22

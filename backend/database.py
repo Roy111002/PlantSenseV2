@@ -4,6 +4,7 @@ from config import DATABASE_PATH
 
 def init_db():
     with closing(sqlite3.connect(DATABASE_PATH)) as con:
+        con.execute("PRAGMA journal_mode=WAL")
         con.execute("""CREATE TABLE IF NOT EXISTS sensor_readings(
         id INTEGER PRIMARY KEY AUTOINCREMENT, device_id TEXT NOT NULL, plant_species TEXT,
         temperature_c REAL, humidity_pct REAL, soil_moisture_pct REAL, light_lux REAL,
@@ -14,6 +15,10 @@ def init_db():
         con.execute("""CREATE TABLE IF NOT EXISTS ai_analysis(
         id INTEGER PRIMARY KEY AUTOINCREMENT, image_id INTEGER, device_id TEXT NOT NULL,
         result_json TEXT NOT NULL, ai_status TEXT NOT NULL, created_at TEXT NOT NULL)""")
+        con.execute("CREATE INDEX IF NOT EXISTS sensor_device_time ON sensor_readings(device_id,created_at DESC,id DESC)")
+        con.execute("CREATE INDEX IF NOT EXISTS image_device_id ON plant_images(device_id,id DESC)")
+        con.execute("CREATE INDEX IF NOT EXISTS analysis_device_id ON ai_analysis(device_id,id DESC)")
+        con.execute("CREATE INDEX IF NOT EXISTS analysis_queue ON ai_analysis(ai_status,id)")
         con.commit()
 @contextmanager
 def connection():
